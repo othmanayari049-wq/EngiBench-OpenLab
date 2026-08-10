@@ -112,6 +112,7 @@ class PhyphoxReader:
         poll_interval: float = 0.25,
         buffers: Iterable[str] | None = None,
         timeout: float = 2.0,
+        auto_start_measurement: bool = True,
     ) -> None:
         if poll_interval < 0.05:
             raise PhoneBridgeError("Phone polling interval must be at least 0.05 seconds.")
@@ -122,6 +123,7 @@ class PhyphoxReader:
         self.callback = callback
         self.poll_interval = float(poll_interval)
         self.timeout = float(timeout)
+        self.auto_start_measurement = auto_start_measurement
         self.requested_buffers = tuple(
             name.strip() for name in (buffers or ()) if name and name.strip()
         )
@@ -197,7 +199,7 @@ class PhyphoxReader:
 
     def _request_json(self, endpoint: str) -> dict[str, object]:
         url = f"{self.base_url}{endpoint}"
-        request = Request(url, headers={"User-Agent": "EngiBench-OpenLab/0.2"})
+        request = Request(url, headers={"User-Agent": "EngiBench-OpenLab/0.2.1"})
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 raw = response.read()
@@ -219,9 +221,19 @@ class PhyphoxReader:
         discovered = self.requested_buffers or tuple(discover_phyphox_buffers(config))
         if not discovered:
             raise PhoneBridgeError(
-                "No usable phyphox buffers were discovered. Enter buffer names manually."
+                "No usable phyphox buffers were discovered. Try a different experiment."
             )
         return title, tuple(discovered)
+
+    def _start_phone_measurement(self) -> None:
+        if not self.auto_start_measurement:
+            return
+        try:
+            result = self._request_json("/control?cmd=start")
+        except PhoneBridgeError:
+            return
+        if result.get("result") is False:
+            return
 
     def _set_configuration(self, title: str, buffers: tuple[str, ...]) -> None:
         with self._state_lock:
@@ -257,6 +269,7 @@ class PhyphoxReader:
             title, buffers = self._load_configuration()
             self._set_configuration(title, buffers)
             self._connected.set()
+            self._start_phone_measurement()
 
             while not self._stop.is_set():
                 with self._state_lock:
@@ -270,6 +283,7 @@ class PhyphoxReader:
                 if session_changed:
                     title, buffers = self._load_configuration()
                     self._set_configuration(title, buffers)
+                    self._start_phone_measurement()
                     self._stop.wait(self.poll_interval)
                     continue
 
