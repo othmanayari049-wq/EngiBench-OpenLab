@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import streamlit as st
@@ -75,7 +75,7 @@ with st.sidebar:
     if not ctl.recording:
         if st.button("Start CSV recording", use_container_width=True):
             try:
-                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
                 ctl.start_recording(Path("recordings") / f"engibench-{stamp}.csv")
                 st.success("Recording started")
             except ValueError as exc:

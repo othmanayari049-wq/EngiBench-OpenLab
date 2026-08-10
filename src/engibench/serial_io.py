@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from threading import Event, Thread
-from typing import Callable
 
 import serial
 from serial.tools import list_ports
@@ -62,7 +62,7 @@ class SerialReader:
                     self.callback(parse_line(line, source=self.port))
                 except TelemetryParseError:
                     continue
-        except Exception as exc:  # serial errors vary by OS/driver
+        except (serial.SerialException, OSError) as exc:
             if self.error_callback:
                 self.error_callback(str(exc))
         finally:

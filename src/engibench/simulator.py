@@ -3,8 +3,8 @@ from __future__ import annotations
 import math
 import random
 import time
+from collections.abc import Callable
 from threading import Event, Thread
-from typing import Callable
 
 from .models import TelemetrySample
 
