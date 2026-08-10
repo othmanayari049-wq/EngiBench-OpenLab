@@ -199,7 +199,7 @@ class PhyphoxReader:
         url = f"{self.base_url}{endpoint}"
         request = Request(url, headers={"User-Agent": "EngiBench-OpenLab/0.2"})
         try:
-            with urlopen(request, timeout=self.timeout) as response:  # noqa: S310
+            with urlopen(request, timeout=self.timeout) as response:
                 raw = response.read()
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             raise PhoneBridgeError(f"Cannot reach phyphox at {self.base_url}: {exc}") from exc
