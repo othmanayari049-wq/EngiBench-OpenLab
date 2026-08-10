@@ -1,53 +1,67 @@
 # iOS and Android phone support
 
-EngiBench OpenLab can use an iPhone or Android phone as a live sensor source through the **phyphox Remote Access** interface.
+EngiBench OpenLab 0.2.1 can automatically discover an iPhone or Android phone running **phyphox Remote Access** on the same local network.
 
-This integration uses the phone's local network connection, not USB serial. The phone and the computer running EngiBench should normally be on the same Wi-Fi network.
+## Normal setup: no address or buffer names
 
-## Requirements
+On the phone:
 
-- EngiBench OpenLab 0.2.0 or newer.
-- The phyphox app on iOS or Android.
-- Phone and computer on the same trusted local network.
-- A phyphox experiment that exposes useful data buffers.
-
-Official phyphox resources:
-
-- https://phyphox.org/
-- https://phyphox.org/remote-control/
-- https://www.phyphox.org/wiki/index.php/Remote-interface_communication
-
-## Setup
-
-1. Open phyphox on the phone.
+1. Open phyphox.
 2. Open an experiment, for example an acceleration experiment.
-3. Enable **Remote Access** from the phyphox menu.
-4. phyphox displays a local address such as `http://192.168.1.42:8080`.
-5. Open EngiBench and choose **Phone (iOS / Android)**.
-6. Paste the address into **Phone Remote Access URL**.
-7. Leave **Buffer names** empty for automatic discovery, or enter a comma-separated list such as `t,accX,accY,accZ` when you know the experiment's buffers.
-8. Press **Start** in EngiBench.
-9. If EngiBench says the experiment is paused, press the measurement/play control in phyphox.
+3. Enable **Remote Access**.
 
-The exact address and port are provided by phyphox. Do not guess them; use the address shown by the app.
+On the computer:
 
-## How EngiBench reads the phone
+1. Open EngiBench.
+2. Choose **Phone (iOS / Android)**.
+3. Press **Auto Detect & Start**.
 
-EngiBench uses phyphox's documented REST interface:
+EngiBench then scans the local network, verifies compatible phyphox endpoints through `/config`, discovers the experiment's useful buffers, connects, and asks phyphox to start measuring.
 
-- `/config` identifies the current experiment and its available/export buffers.
-- `/get` returns the latest values for the selected buffers and the measurement status.
-- EngiBench prefers buffers chosen by the experiment author for export and falls back to declared experiment buffers when necessary.
+## Why Remote Access is still required
 
-The phone data then enters the same EngiBench pipeline as serial and simulated data:
+phyphox only exposes its REST/web interface after Remote Access is enabled in the app. There is therefore nothing for EngiBench to discover before that switch is enabled. EngiBench removes the manual computer-side configuration, but it cannot bypass this phone-side phyphox requirement.
+
+## Discovery behavior
+
+EngiBench:
+
+- reads active network interfaces and their IPv4 netmasks;
+- considers private and link-local IPv4 networks;
+- probes the common phyphox Remote Access HTTP ports 80 and 8080;
+- requests `/config` to distinguish phyphox from unrelated web servers;
+- uses the experiment title and export buffers returned by phyphox;
+- connects the discovered endpoint to `PhyphoxReader`;
+- requests `/control?cmd=start` after connecting.
+
+If more than one phone is detected, EngiBench shows a detected-device selector rather than silently connecting to the wrong experiment.
+
+## Large networks
+
+A complete scan of a large campus or VPN subnet can involve many thousands of hosts. EngiBench bounds discovery work: normal small networks are scanned directly, while large networks are reduced to the `/24` neighborhood containing the computer.
+
+This makes discovery practical, but it also means automatic discovery cannot be guaranteed on every enterprise, guest, VPN, or unusually segmented network.
+
+## Automatic channel discovery
+
+EngiBench first prefers buffers selected by the phyphox experiment author for export. If none are available, it falls back to declared experiment buffers. The result is fed into the same EngiBench telemetry pipeline as serial and simulated data.
+
+## Architecture
 
 ```text
 iPhone / Android
       |
-      | phyphox Remote Access (local network)
+      | phyphox Remote Access
+      v
+Local Network Scanner
+      |
+      +--> /config validation
+      +--> experiment/channel discovery
       v
  PhyphoxReader
       |
+      +--> /control?cmd=start
+      +--> /get?... polling
       v
 TelemetryController
       |
@@ -56,36 +70,29 @@ TelemetryController
       +--> CSVRecorder
 ```
 
-## Polling rate
-
-The **Phone poll interval** controls how often EngiBench asks phyphox for the latest values. This is not necessarily the phone sensor's native sampling frequency. For example, a 0.25 s poll interval requests updates about four times per second, while the underlying phyphox experiment may sample the physical sensor at a different rate.
-
-## Automatic buffer discovery
-
-EngiBench first looks at the export buffers exposed by the experiment's `/config` response because these are the buffers selected by the experiment author for exported data. If none are available, EngiBench falls back to the declared experiment buffers.
-
-If automatic discovery does not select the channels you want, use the optional **Buffer names** field in EngiBench.
-
 ## Security
 
-phyphox documents that its Remote Access interface is not encrypted or password protected. Use the phone integration only on a trusted local network and do not expose the Remote Access endpoint directly to the public internet.
+phyphox documents that Remote Access is not encrypted or password protected. Use it only on a trusted local network and do not expose the phone endpoint directly to the public internet.
 
 ## Troubleshooting
 
-### EngiBench cannot reach the phone
+### No phone found
 
-- Confirm Remote Access is still enabled in phyphox.
-- Confirm both devices are on the same local network.
-- Copy the exact address shown by phyphox.
-- Check whether a firewall or guest Wi-Fi isolation prevents devices from talking to each other.
+- Confirm a phyphox experiment is open.
+- Confirm Remote Access is enabled.
+- Confirm phone and computer are on the same local network.
+- Avoid guest Wi-Fi networks that isolate clients from one another.
+- Temporarily check host firewall rules if local-device traffic is blocked.
+- VPNs can change routing and interface selection; disconnecting a VPN may help during testing.
 
-### Connected but no values appear
+### More than one phone found
 
-- Start the measurement in phyphox.
-- Try a different phyphox experiment.
-- Enter known buffer names manually.
-- Check the EngiBench status message for dropped polls or a changed experiment.
+Choose the intended experiment/device from **Detected phone**, then press Start again.
 
-### Switching experiments
+### Connected but no useful channels
 
-phyphox changes its session identifier when the active experiment changes. EngiBench detects this and reloads the experiment configuration and buffer list automatically.
+Try another phyphox experiment. EngiBench automatically selects export buffers when available, but experiment configurations differ.
+
+### Automatic discovery still does not work
+
+Automatic scanning is best effort. Some managed networks block peer-to-peer traffic or use segmentation that prevents the computer from reaching the phone even when both appear to be on the same Wi-Fi.

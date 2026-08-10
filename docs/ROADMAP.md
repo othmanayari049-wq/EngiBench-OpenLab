@@ -5,54 +5,57 @@
 - Demo simulator
 - JSON, key/value, and numeric CSV parsing
 - Live multi-channel plotting
-- Latest, mean, min, max, standard deviation, RMS
-- Estimated sample rate
+- Statistics and sample-rate estimation
 - CSV recording and export
 - Arduino and ESP32 examples
 - Tests and CI
 
 ## v0.1.1 — Reliability
-- Safe automatic source switching
-- Session-isolated acquisition state
-- Thread-safe serial status reporting
-- Recording lifecycle hardening
-- Readable elapsed-time charts
-- Better source and connection feedback
+- Source-safe switching
+- Per-browser-session acquisition state
+- Better serial status and errors
+- Recording lifecycle fixes
+- Readable chart time axis
 
-## v0.2 — Mobile Lab
-- iOS phone measurements through phyphox Remote Access
-- Android phone measurements through phyphox Remote Access
-- Automatic phyphox experiment buffer discovery
-- Manual phone buffer override
-- Phone measurement/connection diagnostics
-- Automatic experiment re-discovery when a phyphox session changes
+## v0.2 — Mobile lab
+- iOS and Android phone source through phyphox Remote Access
+- Experiment/buffer discovery
+- Phone status reporting
 
-## Next — Lab usability
+## v0.2.1 — Zero-config phone workflow
+- Local IPv4 phone auto discovery
+- No manual IP/URL/port entry in normal use
+- No manual phone buffer names in normal use
+- Automatic experiment identification
+- Automatic request to start phone measurement
+- Safe multiple-phone selection
+
+## v0.3 — Lab usability
 - Sensor calibration workflows
 - Channel metadata and units
 - Threshold alarms
 - Experiment templates
 - Saved sessions
 
-## Board workflow
+## v0.4 — Board workflow
 - Arduino CLI integration
 - Board discovery
 - Compile and upload from EngiBench
-- Firmware project presets
+- Firmware presets
 
-## Signal lab
+## v0.5 — Signal lab
 - FFT and spectrum analysis
 - Digital filtering
 - Peak detection
 - Cross-correlation
 
-## Mechatronics
+## v0.6 — Mechatronics
 - PID response analysis
 - Motor/encoder tools
 - IMU visualization
 - ROS 2 source adapter
 
-## Open engineering platform
+## v1.0 — Open engineering platform
 - Plugin API
 - Automated lab-report generation
 - Community experiment library

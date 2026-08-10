@@ -5,7 +5,7 @@
 ### An open-source engineering workbench for embedded systems, electronics, phone sensors, data acquisition, and mechatronics.
 
 [![CI](https://github.com/othmanayari049-wq/EngiBench-OpenLab/actions/workflows/ci.yml/badge.svg)](https://github.com/othmanayari049-wq/EngiBench-OpenLab/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B.svg)](https://streamlit.io/)
 [![iOS + Android](https://img.shields.io/badge/Phone-iOS%20%2B%20Android-brightgreen.svg)](docs/PHONE.md)
@@ -23,22 +23,24 @@
 
 Engineering students often jump between a serial monitor, plotting software, spreadsheets, scripts, and lab notes just to inspect a sensor experiment. **EngiBench OpenLab puts the core measurement workflow in one open-source toolkit** for Computer Engineering, Electrical Engineering, Embedded Systems, Robotics, and Mechatronics.
 
-Version **0.2.0** supports three acquisition paths:
+Version **0.2.1** supports three acquisition paths:
 
 - a built-in simulator for hardware-free testing;
 - USB serial devices such as Arduino and ESP32 boards;
-- **iOS and Android phones** through the phyphox Remote Access REST interface.
+- **iOS and Android phones with one-click local-network auto discovery** through phyphox Remote Access.
 
 All three feed the same analysis pipeline, so plots, statistics, buffering, recording, and CSV export behave consistently regardless of the source.
 
 ## Features
 
 - **Arduino and ESP32 friendly** — read newline-delimited telemetry over USB serial.
-- **iOS and Android phone sensors** — connect to a phyphox experiment over the local network.
-- **Automatic phone buffer discovery** — prefer buffers selected by the phyphox experiment author for export.
-- **Manual phone buffer selection** — override discovery with comma-separated buffer names when needed.
-- **Phone experiment status** — show connection state, experiment name, active buffers, paused/running state, and empty polls.
-- **Hardware-free demo mode** — test EngiBench without owning a board or phone setup.
+- **iOS and Android phone sensors** — use a phone as a live engineering sensor source.
+- **One-click phone discovery** — no IP address, URL, port, or buffer names are required in the normal workflow.
+- **Automatic experiment discovery** — EngiBench verifies phyphox through its `/config` endpoint and identifies the active experiment.
+- **Automatic channel discovery** — EngiBench prefers buffers selected by the experiment author for export and falls back to declared experiment buffers.
+- **Automatic phone measurement start** — after discovery, EngiBench asks phyphox to start the experiment through its documented control endpoint.
+- **Multiple-phone handling** — if more than one phyphox phone is found, EngiBench shows the detected devices so the intended phone can be selected safely.
+- **Hardware-free demo mode** — test EngiBench without owning a board or configuring a phone.
 - **Flexible serial parser** — JSON, `key=value`, and plain numeric CSV formats.
 - **Named channels** — work with fields such as `temperature_C`, `voltage_V`, `current_A`, `rpm`, or phone experiment buffer names.
 - **Live multi-channel plots** — watch measurements change in real time.
@@ -51,7 +53,6 @@ All three feed the same analysis pipeline, so plots, statistics, buffering, reco
 - **Session isolation** — each browser session owns independent acquisition state.
 - **Thread-safe acquisition** — background serial, phone, and simulator sources feed a bounded shared buffer.
 - **Connection diagnostics** — surface serial errors, malformed serial lines, phone connection errors, and phone polls with no usable values.
-- **CLI utilities** — inspect serial ports or test serial telemetry parsing from the terminal.
 - **Automated tests and CI** — GitHub Actions runs linting and tests on Python 3.10, 3.11, and 3.12.
 
 ## Quick Start
@@ -99,115 +100,70 @@ pip install -e ".[dev]"
 streamlit run app.py
 ```
 
-Start with **Demo simulator** to verify the application before connecting hardware.
-
 ## Data Sources
 
 ### Demo simulator
 
-The simulator creates three synthetic channels:
-
-```text
-temperature_C
-voltage_V
-current_A
-```
-
-Use it to test plotting, statistics, recording, buffer clearing, and CSV export without hardware.
+Use **Demo simulator** to verify the complete dashboard without hardware. EngiBench generates simulated temperature, voltage, and current channels.
 
 ### Serial device
 
-Connect a supported serial board to the computer, choose **Serial device**, select the detected port and baud rate, then press **Start**.
-
-The recommended serial format is one JSON object per line:
+Choose **Serial device**, select the detected COM/TTY port and baud rate, then press **Start**. The recommended firmware format is one JSON object per line:
 
 ```json
 {"temperature_C":25.4,"voltage_V":3.31,"current_A":0.12}
 ```
 
-EngiBench also accepts:
-
-```text
-temperature_C=25.4,voltage_V=3.31,current_A=0.12
-```
-
-and unnamed numeric values:
-
-```text
-25.4,3.31,0.12
-```
-
-Unnamed values become `ch1`, `ch2`, `ch3`, and so on. See [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
+EngiBench also accepts `key=value` and unnamed numeric CSV telemetry. See [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
 ### Phone (iOS / Android)
 
-EngiBench uses **phyphox Remote Access** for phone measurements. phyphox is available for iOS and Android and exposes the active experiment through a local REST interface when Remote Access is enabled.
+Phone setup is intentionally minimal in **0.2.1**.
 
-The integration reads:
+On the phone:
 
-- `/config` to identify the experiment and discover useful buffers;
-- `/get` to retrieve the latest selected values and experiment status.
+1. Install/open **phyphox**.
+2. Open an experiment, such as an acceleration experiment.
+3. Enable **Remote Access**.
 
-The exact sensors available depend on the phone hardware and the phyphox experiment you choose.
+On the computer:
 
-## iOS and Android Phone Setup
+1. Choose **Phone (iOS / Android)**.
+2. Press **Auto Detect & Start**.
 
-1. Install and open phyphox on your iPhone or Android phone.
-2. Put the phone and the computer running EngiBench on the same trusted local network.
-3. Open a phyphox experiment, such as an acceleration experiment.
-4. Enable **Remote Access** in phyphox.
-5. Copy the exact local address shown by phyphox, for example:
+That is the normal workflow. EngiBench automatically:
 
 ```text
-http://192.168.1.42:8080
+Local network
+    |
+    +--> scan active private IPv4 network
+            |
+            +--> probe phyphox Remote Access ports 80 / 8080
+                    |
+                    +--> verify /config
+                            |
+                            +--> identify experiment
+                            +--> detect useful buffers
+                            +--> connect PhyphoxReader
+                            +--> request measurement start
+                            +--> live plots / statistics / CSV
 ```
 
-6. In EngiBench choose **Phone (iOS / Android)**.
-7. Paste the address into **Phone Remote Access URL**.
-8. Leave **Buffer names** empty for automatic discovery, or enter known names separated by commas.
-9. Select the polling interval and press **Start**.
-10. If EngiBench says the experiment is paused, start the measurement in phyphox.
+There is no normal need to type an IP address, port, URL, buffer name, or polling interval.
 
-The official phyphox documentation notes that Remote Access is intended for devices on the same network. Its REST documentation also states that iPhones normally serve the interface on port 80, while an Android example uses port 8080; always use the exact address shown by the app instead of guessing a port.
+#### Why Remote Access still has to be enabled
 
-For a detailed guide, see [`docs/PHONE.md`](docs/PHONE.md).
+EngiBench cannot discover a phone before phyphox exposes its local Remote Access web server. This is a phyphox requirement, not an EngiBench form requirement. Once Remote Access is enabled, EngiBench handles discovery and connection automatically.
 
-### Phone security note
+#### Local-network scope
 
-phyphox documents that its Remote Access interface is **not encrypted or password protected**. Use this integration only on a trusted local network and do not expose the phone's Remote Access endpoint directly to the public internet.
+Discovery uses the computer's active private/link-local IPv4 interfaces and their actual netmasks. Normal small networks are scanned directly. On very large campus/VPN networks, EngiBench limits discovery to the computer's local `/24` neighborhood instead of sweeping thousands of addresses.
 
-Official references:
+#### Security
 
-- [phyphox](https://phyphox.org/)
-- [phyphox Remote Control](https://phyphox.org/remote-control/)
-- [phyphox Remote-interface communication](https://www.phyphox.org/wiki/index.php/Remote-interface_communication)
+phyphox documents that Remote Access is not encrypted or password protected. Use the phone integration on a trusted local network and do not expose the phone's Remote Access service to the public internet.
 
-## Arduino Example
-
-A minimal Arduino sketch is included in [`firmware/arduino_json`](firmware/arduino_json/arduino_json.ino). It samples `A0`, converts the reading to voltage, and streams JSON at approximately 10 Hz.
-
-```cpp
-Serial.print("{\"analog_raw\":");
-Serial.print(sensor, 0);
-Serial.print(",\"voltage_V\":");
-Serial.print(voltage, 3);
-Serial.println("}");
-```
-
-An ESP32 ADC example is available in [`firmware/esp32_json`](firmware/esp32_json/esp32_json.ino).
-
-## Dashboard Behavior
-
-EngiBench intentionally prevents common lab mistakes:
-
-- switching the selected source or source settings stops the previous acquisition;
-- incompatible buffered data is cleared when the acquisition configuration changes;
-- simulator values are explicitly labeled as simulated;
-- serial Start is disabled when no serial port is detected;
-- phone Start is disabled until a Remote Access URL is entered;
-- recording is stopped when acquisition stops or unexpectedly ends;
-- the buffer cannot be cleared while a recording is active;
-- the most recent recording path remains visible after recording stops.
+More details: [`docs/PHONE.md`](docs/PHONE.md).
 
 ## CLI
 
@@ -226,30 +182,28 @@ engibench parse '{"temperature_C":25.4,"voltage_V":3.31}'
 ## Architecture
 
 ```text
-Arduino / ESP32          iPhone / Android          Simulator
-      |                         |                      |
-      | USB serial             | phyphox REST         |
-      v                         v                      v
- SerialReader              PhyphoxReader         DemoSimulator
-      \                         |                     /
-       \________________________|____________________/
-                                |
-                                v
-                     TelemetryController
-                       |               |
-                       v               v
-                  SampleBuffer      CSVRecorder
-                       |
-                       v
-                Statistics / Export
-                       |
-                       v
-                Streamlit Dashboard
+Arduino / ESP32       iOS / Android           Simulator
+      |                    |                      |
+      | USB serial         | local network        |
+      v                    v                      v
+ SerialReader      Phone Auto Discovery     DemoSimulator
+                           |
+                      PhyphoxReader
+      \                    |                     /
+       \                   |                    /
+        +---------- TelemetryController --------+
+                         |        |
+                         v        v
+                   SampleBuffer  CSVRecorder
+                         |
+                         v
+                 Statistics / Export
+                         |
+                         v
+                 Streamlit Dashboard
 ```
 
-Every acquisition source emits the same `TelemetrySample` model. That keeps the analysis and UI independent from the transport and makes future sources easier to add.
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for more detail.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Repository Structure
 
@@ -257,7 +211,6 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for more detail.
 EngiBench-OpenLab/
 ├── app.py
 ├── pyproject.toml
-├── CHANGELOG.md
 ├── src/engibench/
 │   ├── buffer.py
 │   ├── cli.py
@@ -266,90 +219,56 @@ EngiBench-OpenLab/
 │   ├── models.py
 │   ├── parser.py
 │   ├── phone.py
+│   ├── phone_discovery.py
 │   ├── recording.py
 │   ├── serial_io.py
 │   ├── simulator.py
 │   └── statistics.py
 ├── firmware/
-│   ├── arduino_json/
-│   └── esp32_json/
 ├── tests/
-│   ├── test_buffer.py
-│   ├── test_controller.py
-│   ├── test_parser.py
-│   ├── test_phone.py
-│   ├── test_recording.py
-│   ├── test_serial_io.py
-│   └── test_statistics.py
 ├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── PHONE.md
-│   ├── PROTOCOL.md
-│   └── ROADMAP.md
-├── examples/
 └── .github/
 ```
 
 ## Testing
 
-Run the test suite:
-
 ```bash
 pytest -q
-```
-
-Run linting:
-
-```bash
 ruff check .
 ```
 
-GitHub Actions runs both automatically on pushes to `main` and on pull requests across Python 3.10, 3.11, and 3.12.
+GitHub Actions executes linting and tests on Python 3.10, 3.11, and 3.12 for pushes and pull requests.
 
 ## Roadmap
 
-- **v0.1 — Foundation:** simulator, serial telemetry, plots, statistics, CSV recording/export, Arduino/ESP32 examples, CI.
-- **v0.1.1 — Reliability:** safer source switching, session isolation, clearer connection/recording state, readable chart time axis.
-- **v0.2 — Mobile Lab:** iOS and Android phone sensors through phyphox Remote Access, automatic buffer discovery, phone diagnostics.
-- **Next — Lab workflows:** calibration, channel metadata/units, alarms, experiment templates, saved sessions.
-- **Later — Signal lab:** FFT, filtering, peak detection, correlation.
-- **Later — Mechatronics:** PID response analysis, motors/encoders, IMU visualization, ROS 2 integration.
-- **Long term — Platform:** plugin API, automated lab reports, board compile/upload workflow, and community experiments.
-
-Track the detailed plan in [`docs/ROADMAP.md`](docs/ROADMAP.md).
-
-## Who Is It For?
-
-- Computer Engineering students building embedded systems.
-- Electrical Engineering students collecting and analyzing measurements.
-- Mechatronics students working with sensors, actuators, control, and robotics.
-- Students who want to use their phone as a portable measurement platform.
-- Makers and educators who want a lightweight, open telemetry workbench.
+- **v0.1 — Foundation:** simulator, serial telemetry, plots, statistics, CSV, firmware examples, tests and CI.
+- **v0.1.1 — Reliability:** source-safe switching, session isolation, better status, readable time axis, recording lifecycle fixes.
+- **v0.2 — Mobile lab:** iOS/Android phyphox source and phone experiment integration.
+- **v0.2.1 — Zero-config phone workflow:** local-network discovery, automatic experiment/channel detection, and automatic measurement start.
+- **v0.3 — Lab usability:** calibration, units, alarms, templates and saved sessions.
+- **v0.4 — Board workflow:** Arduino CLI board discovery, compile/upload and presets.
+- **v0.5 — Signal lab:** FFT, filters, peak detection and correlation.
+- **v0.6 — Mechatronics:** PID analysis, motors/encoders, IMU visualization and ROS 2.
+- **v1.0 — Platform:** plugin API, automated reports and community experiment library.
 
 ## Contributing
 
-Contributions are welcome. Useful areas include phone experiment support, sensor calibration, signal processing, board integrations, experiment templates, UI improvements, documentation, and testing.
-
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md), choose or open an issue, create a focused branch, and submit a pull request.
+Contributions from students, educators, embedded developers and robotics enthusiasts are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
 
 ## Project Status
 
-EngiBench OpenLab is an **early-stage open-source project**. The core telemetry pipeline, serial source, simulator, phone source, live analysis, recording, and CI are implemented. Real-world behavior can still vary with operating system, USB driver, board firmware, phone model, network configuration, and phyphox experiment.
-
-If you report a problem, include the data source, operating system, board or phone model where relevant, configuration, and a reproducible telemetry example.
+EngiBench OpenLab is an early-stage open-source engineering toolkit. Automated tests validate the software core, but physical hardware and phone behavior can vary with operating system, firewall, Wi-Fi isolation, USB driver, phone model, and experiment configuration.
 
 ## License
 
 Released under the [MIT License](LICENSE).
 
-The optional phone integration communicates with the separately installed phyphox application through its documented Remote Access interface; EngiBench does not bundle phyphox.
-
 ---
 
 <div align="center">
 
-Built as an open engineering toolkit for learning by **measuring, testing, and experimenting**.
+Built as an open engineering toolkit for learning by measuring, testing, and experimenting.
 
-**If EngiBench helps your lab or project, star the repository and consider contributing a sensor workflow, phone experiment, or hardware integration.**
+**Star the repository if it helps your lab work, and consider contributing an experiment or hardware integration.**
 
 </div>
