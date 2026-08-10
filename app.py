@@ -7,7 +7,7 @@ import streamlit as st
 
 from engibench.controller import TelemetryController
 from engibench.export import samples_to_csv_bytes, samples_to_dataframe
-from engibench.phone import PhyphoxReader
+from engibench.phone import PhoneBridgeError, PhyphoxReader
 from engibench.phone_discovery import DiscoveredPhone, discover_phyphox_phones
 from engibench.serial_io import SerialReader, available_ports
 from engibench.simulator import DemoSimulator
@@ -118,7 +118,7 @@ def auto_detect_phone() -> DiscoveredPhone | None:
     with st.spinner("Looking for iOS / Android phones with phyphox Remote Access..."):
         try:
             phones = discover_phyphox_phones()
-        except Exception as exc:
+        except PhoneBridgeError as exc:
             st.session_state.discovered_phones = []
             st.session_state.phone_discovery_error = str(exc)
             return None
