@@ -1,0 +1,19 @@
+name: Feature request
+description: Propose a useful engineering-lab feature
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Engineering problem
+      description: What student, lab, embedded, electronics, or mechatronics problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the workflow or feature you would like to see.
+    validations:
+      required: true

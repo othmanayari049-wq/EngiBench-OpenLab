@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "engibench-openlab"
+version = "0.1.0"
+description = "Open-source engineering lab toolkit for embedded systems, electronics, sensors, data acquisition, and mechatronics."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Mohamed Ayari"}]
+dependencies = [
+  "streamlit>=1.37",
+  "pyserial>=3.5",
+  "pandas>=2.0",
+  "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+engibench = "engibench.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
