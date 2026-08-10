@@ -7,7 +7,8 @@ import streamlit as st
 
 from engibench.controller import TelemetryController
 from engibench.export import samples_to_csv_bytes, samples_to_dataframe
-from engibench.phone import PhoneBridgeError, PhyphoxReader
+from engibench.phone import PhyphoxReader
+from engibench.phone_discovery import DiscoveredPhone, discover_phyphox_phones
 from engibench.serial_io import SerialReader, available_ports
 from engibench.simulator import DemoSimulator
 from engibench.statistics import channel_statistics, estimate_sample_rate
@@ -19,20 +20,20 @@ PHONE_SOURCE = "Phone (iOS / Android)"
 
 def initialize_session() -> None:
     """Create independent acquisition state for each browser session."""
-    if "controller" not in st.session_state:
-        st.session_state.controller = TelemetryController(max_samples=3000)
-    if "source" not in st.session_state:
-        st.session_state.source = None
-    if "active_source_kind" not in st.session_state:
-        st.session_state.active_source_kind = None
-    if "active_source_config" not in st.session_state:
-        st.session_state.active_source_config = None
-    if "buffer_source_config" not in st.session_state:
-        st.session_state.buffer_source_config = None
-    if "source_notice" not in st.session_state:
-        st.session_state.source_notice = ""
-    if "recording_notice" not in st.session_state:
-        st.session_state.recording_notice = ""
+    defaults = {
+        "controller": TelemetryController(max_samples=3000),
+        "source": None,
+        "active_source_kind": None,
+        "active_source_config": None,
+        "buffer_source_config": None,
+        "source_notice": "",
+        "recording_notice": "",
+        "discovered_phones": [],
+        "phone_discovery_error": "",
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
 def stop_active_source(
@@ -89,30 +90,51 @@ def render_source_status() -> None:
 
     if isinstance(current, PhyphoxReader):
         if current.last_error:
-            st.error(f"Phone connection error: {current.last_error}")
+            st.error(current.last_error)
         elif current.connected:
             title = current.experiment_title or "phyphox experiment"
-            st.success(f"Acquisition: Phone connected through phyphox — {title}.")
+            st.success(f"Phone connected automatically: {title} · {current.base_url}")
+            if current.buffers:
+                st.caption("Detected channels: " + ", ".join(current.buffers))
+            if current.measuring is False:
+                st.warning("Phone is connected, but phyphox reports that measurement is paused.")
         elif current.running:
-            st.info(f"Connecting to phone at {current.base_url}...")
+            st.info("Connecting to the detected phone...")
         else:
             st.warning("Phone source is not running.")
-
-        if current.buffers:
-            st.caption("Phone buffers: " + ", ".join(current.buffers))
-        if current.measuring is False:
-            st.warning("Phone is connected, but the phyphox experiment is paused.")
         if current.dropped_polls:
-            st.warning(f"Phone polls with no usable values: {current.dropped_polls}")
+            st.caption(f"Phone polls without usable values: {current.dropped_polls}")
         return
 
     if st.session_state.source_notice:
         st.info(st.session_state.source_notice)
     else:
-        st.info(
-            "Acquisition is stopped. Start the simulator, connect a serial board, "
-            "or connect an iOS/Android phone."
+        st.info("Acquisition is stopped. Choose a source and press Start.")
+
+
+def auto_detect_phone() -> DiscoveredPhone | None:
+    """Scan the local network and return a single unambiguous phyphox phone."""
+    st.session_state.phone_discovery_error = ""
+    with st.spinner("Looking for iOS / Android phones with phyphox Remote Access..."):
+        try:
+            phones = discover_phyphox_phones()
+        except Exception as exc:
+            st.session_state.discovered_phones = []
+            st.session_state.phone_discovery_error = str(exc)
+            return None
+    st.session_state.discovered_phones = phones
+    if not phones:
+        st.session_state.phone_discovery_error = (
+            "No phone found. Open a phyphox experiment on the phone, enable Remote Access, "
+            "and keep the phone and computer on the same local Wi-Fi."
         )
+        return None
+    if len(phones) > 1:
+        st.session_state.phone_discovery_error = (
+            f"Found {len(phones)} phones. Select one from the detected-device list."
+        )
+        return None
+    return phones[0]
 
 
 initialize_session()
@@ -120,7 +142,7 @@ ctl: TelemetryController = st.session_state.controller
 
 st.title("EngiBench OpenLab")
 st.caption(
-    "Open-source telemetry workbench for embedded systems, electronics, sensors, and mechatronics."
+    "Open-source telemetry workbench for embedded systems, electronics, phone sensors, and mechatronics."
 )
 
 with st.sidebar:
@@ -134,9 +156,7 @@ with st.sidebar:
     ports = available_ports()
     selected_port = None
     baud = 115200
-    phone_url = ""
-    phone_buffers_text = ""
-    phone_interval = 0.25
+    selected_phone: DiscoveredPhone | None = None
 
     if source_kind == "Serial device":
         if not ports:
@@ -148,103 +168,84 @@ with st.sidebar:
 
     elif source_kind == PHONE_SOURCE:
         st.caption(
-            "Uses phyphox Remote Access over the local network. "
-            "The phone and this computer should normally be on the same Wi-Fi."
+            "No URL or buffer names needed. EngiBench scans the local network for phyphox "
+            "Remote Access and detects the experiment channels automatically."
         )
-        phone_url = st.text_input(
-            "Phone Remote Access URL",
-            placeholder="http://192.168.1.42:8080",
-            help="Paste the exact address shown by phyphox after enabling Remote Access.",
-        )
-        phone_buffers_text = st.text_input(
-            "Buffer names (optional)",
-            placeholder="t,accX,accY,accZ",
-            help="Leave empty to auto-discover buffers from the phyphox experiment.",
-        )
-        phone_interval = st.select_slider(
-            "Phone poll interval",
-            options=[0.1, 0.2, 0.25, 0.5, 1.0],
-            value=0.25,
-            format_func=lambda value: f"{value:g} s",
-        )
-        st.caption("Start the measurement in phyphox if EngiBench reports that it is paused.")
-
-    manual_phone_buffers = tuple(
-        name.strip() for name in phone_buffers_text.split(",") if name.strip()
-    )
+        phones: list[DiscoveredPhone] = st.session_state.discovered_phones
+        if phones:
+            labels = [f"{phone.title} · {phone.base_url}" for phone in phones]
+            selected_label = st.selectbox("Detected phone", labels)
+            selected_phone = phones[labels.index(selected_label)]
+        if st.session_state.phone_discovery_error:
+            st.warning(st.session_state.phone_discovery_error)
+        st.caption("On the phone: open phyphox → choose an experiment → enable Remote Access.")
 
     if source_kind == "Demo simulator":
-        requested_config = ("demo",)
+        requested_config = (source_kind,)
     elif source_kind == "Serial device":
-        requested_config = ("serial", selected_port, int(baud))
+        requested_config = (source_kind, selected_port, int(baud))
     else:
         requested_config = (
-            "phone",
-            phone_url.strip(),
-            manual_phone_buffers,
-            float(phone_interval),
+            source_kind,
+            selected_phone.base_url if selected_phone else None,
         )
 
     active_config = st.session_state.active_source_config
     if st.session_state.source and active_config and active_config != requested_config:
         stop_active_source(
-            "Acquisition stopped because the source settings changed. "
-            "Buffer cleared to avoid mixing data.",
+            "Acquisition stopped because the source settings changed. Buffer cleared to avoid mixing data.",
             clear_buffer=True,
         )
 
     running = source_is_running()
     serial_unavailable = source_kind == "Serial device" and not ports
-    phone_unavailable = source_kind == PHONE_SOURCE and not phone_url.strip()
-    source_unavailable = serial_unavailable or phone_unavailable
-
     col_start, col_stop = st.columns(2)
-    start_label = "Restart" if running else "Start"
+    start_label = "Restart" if running else ("Auto Detect & Start" if source_kind == PHONE_SOURCE else "Start")
     start_clicked = col_start.button(
         start_label,
         use_container_width=True,
-        disabled=source_unavailable,
+        disabled=serial_unavailable,
     )
     stop_clicked = col_stop.button("Stop", use_container_width=True, disabled=not running)
 
     if start_clicked:
         if st.session_state.source:
             stop_active_source()
+
+        if source_kind == PHONE_SOURCE:
+            phone = selected_phone or auto_detect_phone()
+            if phone is None and len(st.session_state.discovered_phones) == 1:
+                phone = st.session_state.discovered_phones[0]
+            if phone is None:
+                st.rerun()
+            requested_config = (PHONE_SOURCE, phone.base_url)
+            current = PhyphoxReader(phone.base_url, ctl.ingest, buffers=phone.buffers or None)
+        elif source_kind == "Demo simulator":
+            current = DemoSimulator(ctl.ingest)
+        else:
+            current = SerialReader(str(selected_port), int(baud), ctl.ingest)
+
         previous_buffer_config = st.session_state.buffer_source_config
         if previous_buffer_config and previous_buffer_config != requested_config:
             ctl.buffer.clear()
         st.session_state.source_notice = ""
-
-        current = None
-        try:
-            if source_kind == "Demo simulator":
-                current = DemoSimulator(ctl.ingest)
-            elif source_kind == "Serial device":
-                current = SerialReader(str(selected_port), int(baud), ctl.ingest)
-            else:
-                current = PhyphoxReader(
-                    phone_url,
-                    ctl.ingest,
-                    poll_interval=float(phone_interval),
-                    buffers=manual_phone_buffers or None,
-                )
-        except PhoneBridgeError as exc:
-            st.session_state.source_notice = f"Phone configuration error: {exc}"
-
-        if current is not None:
-            current.start()
-            st.session_state.source = current
-            st.session_state.active_source_kind = source_kind
-            st.session_state.active_source_config = requested_config
-            st.session_state.buffer_source_config = requested_config
+        current.start()
+        st.session_state.source = current
+        st.session_state.active_source_kind = source_kind
+        st.session_state.active_source_config = requested_config
+        st.session_state.buffer_source_config = requested_config
         st.rerun()
 
     if stop_clicked:
         stop_active_source()
         st.rerun()
 
-    if phone_unavailable:
-        st.caption("Paste the phyphox Remote Access URL to enable Start.")
+    if source_kind == PHONE_SOURCE and st.button("Scan again", use_container_width=True):
+        if st.session_state.source:
+            stop_active_source(clear_buffer=True)
+        st.session_state.discovered_phones = []
+        auto_detect_phone()
+        st.rerun()
 
     clear_disabled = ctl.recording
     if st.button("Clear buffer", use_container_width=True, disabled=clear_disabled):
@@ -293,7 +294,6 @@ def live_dashboard() -> None:
     render_source_status()
     if st.session_state.recording_notice:
         st.caption(st.session_state.recording_notice)
-
     samples = ctl.buffer.snapshot()
     if not samples:
         st.info("No telemetry buffered yet.")
